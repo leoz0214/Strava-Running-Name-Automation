@@ -2,6 +2,7 @@
 import logging
 import time
 
+import api
 import configure
 from const import LOG_FILE
 
@@ -10,6 +11,9 @@ def main() -> None:
     """Main procedure of the program."""
     while True:
         config = configure.get_config()
+        access_token = api.get_access_token(config)
+        print(access_token)
+        time.sleep(1)
         
 
 if __name__ == "__main__":
