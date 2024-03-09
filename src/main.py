@@ -1,6 +1,7 @@
 """Main module of the program - entry point."""
 import logging
 import time
+import timeit
 
 import api
 import configure
@@ -10,10 +11,12 @@ from const import LOG_FILE
 def main() -> None:
     """Main procedure of the program."""
     while True:
+        start = timeit.default_timer()
         config = configure.get_config()
         access_token = api.get_access_token(config)
-        print(access_token)
-        time.sleep(1)
+        logging.info("New activities checked for and any renames applied.")
+        stop = timeit.default_timer()
+        time.sleep(max(0, config.refresh_minutes * 60 - (stop - start)))
         
 
 if __name__ == "__main__":
