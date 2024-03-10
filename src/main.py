@@ -3,6 +3,7 @@ import logging
 import time
 import timeit
 
+import activity
 import api
 import configure
 from const import LOG_FILE
@@ -14,6 +15,7 @@ def main() -> None:
         start = timeit.default_timer()
         config = configure.get_config()
         access_token = api.get_access_token(config)
+        activities = activity.get_activities(access_token)
         logging.info("New activities checked for and any renames applied.")
         stop = timeit.default_timer()
         time.sleep(max(0, config.refresh_minutes * 60 - (stop - start)))

@@ -23,21 +23,21 @@ from const import CREDENTIALS_FILE
 AUTH_URL = "https://www.strava.com/oauth/authorize"
 PERMISSIONS = ["read", "activity:read_all", "activity:write"]
 TOKEN_URL = "https://www.strava.com/oauth/token"
+API_URL = "https://www.strava.com/api/v3"
 DEFAULT_MAX_REQUEST_ATTEMPTS = 3
 RENEW_SECONDS_BEFORE_EXPIRY = 600
 
 
-def post(
-    url: str, data: dict, validate_function: Callable = None,
-    attempts: int = DEFAULT_MAX_REQUEST_ATTEMPTS
+def make_request(
+    function: Callable, validate_function: Callable | None, attempts: int
 ) -> rq.Response:
     """
-    POST request wrapper for retrying. Specify a validation
-    function to check status code etc. before returning response.
+    Base function for request retrying until successful,
+    or max attempts reached.
     """
     while True:
         try:
-            response = rq.post(url, data)
+            response = function()
             if (
                 validate_function is not None
                 and not validate_function(response)
@@ -48,6 +48,35 @@ def post(
             attempts -= 1
             if not attempts:
                 raise e
+
+
+def get(
+    url: str, params: str, validate_function: Callable = None,
+    attempts: int = DEFAULT_MAX_REQUEST_ATTEMPTS
+) -> rq.Response:
+    """
+    GET request wrapper for retrying. Specify a validation
+    function to check status code etc. before returning response.
+    """
+    return make_request(
+        lambda: rq.get(url, params), validate_function, attempts)
+
+
+def post(
+    url: str, data: dict, validate_function: Callable = None,
+    attempts: int = DEFAULT_MAX_REQUEST_ATTEMPTS
+) -> rq.Response:
+    """
+    POST request wrapper for retrying. Specify a validation
+    function to check status code etc. before returning response.
+    """
+    return make_request(
+        lambda: rq.post(url, data), validate_function, attempts)
+
+
+def is_status_200(response: rq.Response) -> bool:
+    """Simply checks response is 200 to confirm success."""
+    return response.status_code == 200
 
 
 def get_free_port() -> int:
@@ -141,7 +170,7 @@ def get_token_info(
         params["refresh_token"] = refresh_token
         params["grant_type"] = "refresh_token"
     return post(
-        TOKEN_URL, params, lambda response: response.status_code == 200).json()
+        TOKEN_URL, params, is_status_200).json()
 
 
 def save_token_info(token_info: dict) -> None:
