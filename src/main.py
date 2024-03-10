@@ -13,13 +13,20 @@ def main() -> None:
     """Main procedure of the program."""
     while True:
         start = timeit.default_timer()
-        config = configure.get_config()
+        try:
+            config = configure.get_config()
+        except Exception as e:
+            logging.error(f"Config file error: {e}")
+            return
         access_token = api.get_access_token(config)
         activities = activity.get_activities(access_token)
         for activity_ in activities:
             if not activity.can_process_activity(activity_):
                 continue
-        logging.info("New activities checked for and any renames applied.")
+        if activities:
+            logging.info("New activities processed and any renames applied.")
+        else:
+            logging.info("No new activities detected.")
         stop = timeit.default_timer()
         time.sleep(max(0, config.refresh_minutes * 60 - (stop - start)))
         

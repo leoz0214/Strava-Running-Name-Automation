@@ -47,6 +47,7 @@ def make_request(
         except Exception as e:
             attempts -= 1
             if not attempts:
+                logging.error(f"Request error occurred: {e}")
                 raise e
 
 

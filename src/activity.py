@@ -235,7 +235,7 @@ def can_process_activity(activity: Activity) -> bool:
     Returns True if an activity can be processed by the program.
     - The activity must be a run.
     - The title must be the default <time_of_day> Run
-    - The descripion must be empty (None).
+    - The description must be empty (None).
     """
     if activity.type != "Run":
         logging.info(
