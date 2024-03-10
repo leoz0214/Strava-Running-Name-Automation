@@ -16,6 +16,9 @@ def main() -> None:
         config = configure.get_config()
         access_token = api.get_access_token(config)
         activities = activity.get_activities(access_token)
+        for activity_ in activities:
+            if not activity.can_process_activity(activity_):
+                continue
         logging.info("New activities checked for and any renames applied.")
         stop = timeit.default_timer()
         time.sleep(max(0, config.refresh_minutes * 60 - (stop - start)))
