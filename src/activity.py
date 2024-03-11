@@ -183,7 +183,8 @@ def get_activity(activity_id: int, access_token: str) -> Activity:
 
     stream_url = GET_ACTIVITY_STREAMS_URL.format(id=activity_id)
     keys = []
-    if data["start_latlng"] is not None:
+    has_location = bool(data["start_latlng"])
+    if has_location:
         keys.append("latlng")
     if data["has_heartrate"]:
         keys.append("heartrate")
@@ -199,7 +200,7 @@ def get_activity(activity_id: int, access_token: str) -> Activity:
     else:
         lat_long_stream = None
         heart_rate_stream = None
-    if data["start_latlng"] is not None:
+    if has_location:
         weather = get_weather(start_date_time, *data["start_latlng"])
     else:
         weather = None

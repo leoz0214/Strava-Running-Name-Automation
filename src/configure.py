@@ -2,11 +2,13 @@
 Module for parsing and building the configuration settings,
 including deep validation.
 """
+import datetime as dt
 import itertools
 import json
 import numbers
 import string
 from dataclasses import dataclass
+from typing import Callable
 
 from const import CONFIG_FILE
 
@@ -20,11 +22,26 @@ MAX_HEART_RATE = 250
 
 
 @dataclass
+class Markers:
+    """All markers for each metric stored in one data class."""
+    distance: dict[str, list]
+    moving_time: dict[str, list]
+    elapsed_time: dict[str, list]
+    pace: dict[str, list]
+    start_time: dict[str, list]
+    date: dict[str, list]
+    elevation: dict[str, list]
+    elevation_per_km: dict[str, list]
+    cadence: dict[str, list]
+
+
+@dataclass
 class Config:
     """All configuration data stored in one data class."""
     client_id: int
     client_secret: str
     refresh_minutes: int
+    markers: Markers | None
 
 
 def validate_client_id(client_id: int) -> None:
@@ -122,6 +139,151 @@ def validate_description(
         raise TypeError(
             f"{metric.capitalize()} description must be a string or "
             "non-empty array of strings.")
+
+
+def validate_markers(
+    markers: dict[str, list], metric: str, validate_category_function: Callable
+) -> None:
+    """
+    Checks all markers of a particular metric are valid,
+    including a validation function for each category.
+    """
+    if not isinstance(markers, dict):
+        raise TypeError(f"{metric.capitalize()} markers must be a dictionary.")
+    for key, categories in markers.items():
+        if not valid_marker_key(key):
+            raise ValueError(
+                f"{metric.capitalize()} markers must be "
+                "alphanumeric only (alongside underscores).")
+        if not isinstance(categories, list):
+            raise TypeError(
+                f"{metric.capitalize()} markers categories must be an array.")
+        for category in categories:
+            if not isinstance(category, list):
+                raise TypeError(
+                    f"{metric.capitalize()} categories must be arrays.")
+            validate_category_function(category)
+
+
+def validate_numeric_category(
+    category: list, metric: str, int_only: bool
+) -> None:
+    """Validates a numeric category in the format [min, max, title, (desc)]."""
+    if len(category) == 3:
+        lower, upper, title = category
+        description = None
+    elif len(category) == 4:
+        lower, upper, title, description = category
+    else:
+        raise ValueError(f"Invalid {metric} category found.")
+    if lower is not None or upper is not None:
+        if lower is None:
+            raise ValueError(f"Min {metric} cannot be null alone.")
+        if not int_only and not isinstance(lower, numbers.Number):
+            raise ValueError(f"Min {metric} must be numeric.")
+        if int_only and not isinstance(lower, int):
+            raise ValueError(f"Min {metric} must be an integer.")
+        if lower < 0:
+            raise ValueError(f"Min {metric} must be non-negative")
+        if upper is not None:
+            if not int_only and not isinstance(upper, numbers.Number):
+                raise ValueError(f"Max {metric} must be numeric.")
+            if int_only and not isinstance(upper, int):
+                raise ValueError(f"Max {metric} must be an integer.")
+            if upper <= lower:
+                raise ValueError(
+                    f"Max {metric} must be greater than min {metric}.")
+    validate_title(title, metric)
+    validate_description(description, metric)
+
+
+def valid_hhmm_string(time_: str) -> bool:
+    """Returns True if a time string is indeed strictly 24-hour HHMM."""
+    return (
+        len(time_) == len("HHMM") and time_.isdigit()
+        and 0 <= int(time_[:2]) <= 23 and 0 <= int(time_[2:]) <= 59)
+
+
+def validate_start_time_category(category: list, metric: str) -> None:
+    """
+    Validates a start time category in the format [min, max, title, (desc)]
+    Times must be a string in the format HHMM, valid 24h time.
+    Overlap into different days possible e.g. 2300 -> 0100.
+    """
+    if len(category) == 3:
+        lower, upper, title = category
+        description = None
+    elif len(category) == 4:
+        lower, upper, title, description = category
+    else:
+        raise ValueError(f"Invalid {metric} category found.")
+    if lower is not None or upper is not None:
+        if not isinstance(lower, str):
+            raise TypeError(f"Min {metric} must be a HHMM string.")
+        if not isinstance(upper, str):
+            raise TypeError(f"Max {metric} must be a HHMM string.")
+        if not valid_hhmm_string(lower):
+            raise ValueError(f"Min {metric} must be a 24-hour HHMM string.")
+        if not valid_hhmm_string(upper):
+            raise ValueError(f"Max {metric} must be a 24-hour HHMM string.")
+        if lower == upper:
+            raise ValueError(f"Min {metric} must not equal max {metric}.")
+    validate_title(title, metric)
+    validate_description(description, metric)
+
+
+def valid_yyyy_mm_dd_string(date: str) -> bool:
+    """
+    Returns True if the date is a valid YYYY-MM-DD date string.
+    Asterisks indicate placeholders.
+    """
+    if date.count("-") != 2:
+        return False
+    year, month, day = date.split("-")
+    if year == "*":
+        # Use leap year if year is *, in case month is 2 and day is 29.
+        year = "2024"
+    if month == "*":
+        # Use a month with 31 days in case day is 31.
+        month = "01"
+    if day == "*":
+        # Use a day number 29 or less in case month is Feb.
+        day = "01"
+    if len(year) != 4 or len(month) != 2 or len(day) != 2:
+        return False
+    try:
+        # Tries to create a date object - if successful, valid, otherwise not.
+        dt.date(int(year), int(month), int(day))
+        return True
+    except ValueError:
+        return False
+
+
+def validate_date_category(category: list, metric: str) -> None:
+    """
+    Validates a date category in the format [date, title, (desc)].
+    date is a string in the format YYYY-MM-DD where YYYY, MM and DD
+    can be replaced with asterisk placeholders to capture matching dates.
+    Valid examples: 2024-03-11, *-12-25, *-*-01, *-02-*, *-*-*
+    For example, *-12-25 will capture any year on December 25th.
+    """
+    if len(category) == 2:
+        date, title = category
+        description = None
+    elif len(category) == 3:
+        date, title, description = category
+    else:
+        raise ValueError(f"Invalid {metric} category found.")
+    if date is not None:
+        error_message = (
+            f"{metric.capitalize()} must be a YYYY-MM-DD string "
+            "(asterisk placeholders allowed).")
+        if not isinstance(date, str):
+            raise TypeError(error_message)
+        if not valid_yyyy_mm_dd_string(date):
+            raise ValueError(error_message)
+    validate_title(title, metric)
+    validate_description(description, metric)
     
 
 def validate_numeric_markers(
@@ -131,47 +293,10 @@ def validate_numeric_markers(
     Checks all markers of a numeric metric are valid,
     including distance, moving/elapsed time, elevation etc.
     """
-    if not isinstance(markers, dict):
-        raise TypeError(f"{metric.capitalize()} markers must be a dictionary.")
-    for key, categories in markers.items():
-        if not valid_marker_key(key):
-            raise ValueError(
-                f"{metric.capitalize()} markers must be "
-                "alphanumeric only (alongside underscores)")
-        if not isinstance(categories, list):
-            raise TypeError(
-                f"{metric.capitalize()} markers categories must be an array.")
-        for category in categories:
-            if not isinstance(category, list):
-                raise TypeError(
-                    f"{metric.capitalize()} categories must be arrays.")
-            if len(category) == 3:
-                lower, upper, title = category
-                description = None
-            elif len(category) == 4:
-                lower, upper, title, description = category
-            else:
-                raise ValueError(f"Invalid {metric} category found.")
-            if lower is not None or upper is not None:
-                if lower is None:
-                    raise ValueError(f"Min {metric} cannot be null alone.")
-                if not int_only and not isinstance(lower, numbers.Number):
-                    raise ValueError(f"Min {metric} must be numeric.")
-                if int_only and not isinstance(lower, int):
-                    raise ValueError(f"Min {metric} must be an integer.")
-                if lower < 0:
-                    raise ValueError(f"Min {metric} must be non-negative")
-                if upper is not None:
-                    if not int_only and not isinstance(upper, numbers.Number):
-                        raise ValueError(f"Max {metric} must be numeric.")
-                    if int_only and not isinstance(upper, int):
-                        raise ValueError(f"Max {metric} must be an integer.")
-                    if upper <= lower:
-                        raise ValueError(
-                            f"Max {metric} must be greater than min {metric}.")
-            validate_title(title, metric)
-            validate_description(description, metric)
-    
+    validate_category_function = (
+        lambda marker: validate_numeric_category(marker, metric, int_only))
+    validate_markers(markers, metric, validate_category_function)
+
 
 def validate_distance_markers(distance_markers: dict[str, list]) -> None:
     """Checks all distance markers are valid."""
@@ -193,6 +318,21 @@ def validate_elapsed_time_markers(
 def validate_pace_markers(pace_markers: dict[str, list]) -> None:
     """Checks all pace markers are valid."""
     validate_numeric_markers(pace_markers, "pace")
+
+
+def validate_start_time_markers(start_time_markers: dict[str, list]) -> None:
+    """Checks all start time markers are valid."""
+    validate_category_function = (
+        lambda category: validate_start_time_category(category, "start time"))
+    validate_markers(
+        start_time_markers, "start time", validate_category_function)
+    
+
+def validate_date_markers(date_markers: dict[str, list]) -> None:
+    """Checks all date markers are valid."""
+    validate_category_function = (
+        lambda category: validate_date_category(category, "date"))
+    validate_markers(date_markers, "date", validate_category_function)
 
 
 def validate_elevation_markers(elevation_markers: dict[str, list]) -> None:
@@ -252,6 +392,12 @@ def get_config() -> Config:
         pace_markers = markers.get("pace", {})
         if pace_markers != {}:
             validate_pace_markers(pace_markers)
+        start_time_markers = markers.get("start_time", {})
+        if start_time_markers != {}:
+            validate_start_time_markers(start_time_markers)
+        date_markers = markers.get("date", {})
+        if date_markers != {}:
+            validate_date_markers(date_markers)
         elevation_markers = markers.get("elevation", {})
         if elevation_markers != {}:
             validate_elevation_markers(elevation_markers)
@@ -261,6 +407,10 @@ def get_config() -> Config:
         cadence_markers = markers.get("cadence", {})
         if cadence_markers != {}:
             validate_cadence_markers(cadence_markers)
+        markers = Markers(
+            distance_markers, moving_time_markers, elapsed_time_markers,
+            pace_markers, start_time_markers, date_markers,
+            elevation_markers, elevation_per_km_markers, cadence_markers)
 
     heart_rate_zones = data.get("hr_zones")
     if heart_rate_zones is not None:
@@ -269,4 +419,4 @@ def get_config() -> Config:
             int(zone): heart_rate
             for zone, heart_rate in heart_rate_zones.items()}
 
-    return Config(client_id, client_secret, refresh_minutes)
+    return Config(client_id, client_secret, refresh_minutes, markers)

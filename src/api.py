@@ -42,6 +42,7 @@ def make_request(
                 validate_function is not None
                 and not validate_function(response)
             ):
+                print(response.text)
                 raise RuntimeError("Validation failed.")
             return response
         except Exception as e:
@@ -153,10 +154,10 @@ def get_code(config: configure.Config) -> str:
 
 
 def get_token_info(
-    config: configure.Config, code: str = None, refresh_token= None
+    config: configure.Config, code: str = None, refresh_token: str = None
 ) -> dict:
     """
-    Returns the token JSON response from exhancing for a token.
+    Returns the token JSON response from exchanging for a token.
     Either the first time through an auth code or renewing
     through a refresh token.
     """
