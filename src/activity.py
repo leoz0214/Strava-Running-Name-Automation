@@ -80,7 +80,7 @@ class Activity:
     start_date_time: dt.datetime
     elevation: float | None
     elevation_per_km: float | None
-    cadence: int | None
+    cadence: float | None
     lat_long_stream: list[list[int]] | None
     heart_rate_stream: list[int] | None
     weather: Weather | None

@@ -17,8 +17,6 @@ MAX_REFRESH_MINUTES = 60
 DEFAULT_REFRESH_MINUTES = 5
 MIN_HEART_RATE = 50
 MAX_HEART_RATE = 250
-INVALID_MARKER_KEY_STRING = (
-    "{} markers must be alphanumeric only (alongside underscores).")
 
 
 @dataclass
@@ -104,7 +102,7 @@ def validate_title(title: str | list[str] | None, metric: str) -> None:
             and all(isinstance(option, str) for option in title))
     ):
         raise TypeError(
-            f"{metric.title()} title must be a string or "
+            f"{metric.capitalize()} title must be a string or "
             "non-empty array of strings.")
     
 
@@ -122,44 +120,96 @@ def validate_description(
             and all(isinstance(option, str) for option in description))
     ):
         raise TypeError(
-            f"{metric.title()} description must be a string or "
+            f"{metric.capitalize()} description must be a string or "
             "non-empty array of strings.")
+    
+
+def validate_numeric_markers(
+    markers: dict[str, list], metric: str, int_only: bool = False
+) -> None:
+    """
+    Checks all markers of a numeric metric are valid,
+    including distance, moving/elapsed time, elevation etc.
+    """
+    if not isinstance(markers, dict):
+        raise TypeError(f"{metric.capitalize()} markers must be a dictionary.")
+    for key, categories in markers.items():
+        if not valid_marker_key(key):
+            raise ValueError(
+                f"{metric.capitalize()} markers must be "
+                "alphanumeric only (alongside underscores)")
+        if not isinstance(categories, list):
+            raise TypeError(
+                f"{metric.capitalize()} markers categories must be an array.")
+        for category in categories:
+            if not isinstance(category, list):
+                raise TypeError(
+                    f"{metric.capitalize()} categories must be arrays.")
+            if len(category) == 3:
+                lower, upper, title = category
+                description = None
+            elif len(category) == 4:
+                lower, upper, title, description = category
+            else:
+                raise ValueError(f"Invalid {metric} category found.")
+            if lower is not None or upper is not None:
+                if lower is None:
+                    raise ValueError(f"Min {metric} cannot be null alone.")
+                if not int_only and not isinstance(lower, numbers.Number):
+                    raise ValueError(f"Min {metric} must be numeric.")
+                if int_only and not isinstance(lower, int):
+                    raise ValueError(f"Min {metric} must be an integer.")
+                if lower < 0:
+                    raise ValueError(f"Min {metric} must be non-negative")
+                if upper is not None:
+                    if not int_only and not isinstance(upper, numbers.Number):
+                        raise ValueError(f"Max {metric} must be numeric.")
+                    if int_only and not isinstance(upper, int):
+                        raise ValueError(f"Max {metric} must be an integer.")
+                    if upper <= lower:
+                        raise ValueError(
+                            f"Max {metric} must be greater than min {metric}.")
+            validate_title(title, metric)
+            validate_description(description, metric)
     
 
 def validate_distance_markers(distance_markers: dict[str, list]) -> None:
     """Checks all distance markers are valid."""
-    if not isinstance(distance_markers, dict):
-        raise TypeError("Distance markers must be a dictionary.")
-    for key, categories in distance_markers.items():
-        if not valid_marker_key(key):
-            raise ValueError(INVALID_MARKER_KEY_STRING.format("Distance"))
-        if not isinstance(categories, list):
-            raise TypeError("Distance markers categories must be an array.")
-        for category in categories:
-            if not isinstance(category, list):
-                raise TypeError("Distance categories must be arrays.")
-            if len(category) == 3:
-                min_distance, max_distance, title = category
-                description = None
-            elif len(category) == 4:
-                min_distance, max_distance, title, description = category
-            else:
-                raise ValueError("Invalid distance category found.")
-            if min_distance is not None or max_distance is not None:
-                if min_distance is None:
-                    raise ValueError("Min distance cannot be null alone.")
-                if not isinstance(min_distance, numbers.Number):
-                    raise TypeError("Min distance must be numeric.")
-                if min_distance < 0:
-                    raise ValueError("Min distance must be non-negative.")
-                if max_distance is not None:
-                    if not isinstance(max_distance, numbers.Number):
-                        raise TypeError("Max distance must be numeric.")
-                    if max_distance <= min_distance:
-                        raise ValueError(
-                            "Max distance must be greater than min distance.")
-            validate_title(title, "distance")
-            validate_description(description, "distance")
+    validate_numeric_markers(distance_markers, "distance")
+
+
+def validate_moving_time_markers(moving_time_markers: dict[str, list]) -> None:
+    """Checks all moving time markers are valid."""
+    validate_numeric_markers(moving_time_markers, "moving time", True)
+
+
+def validate_elapsed_time_markers(
+    elapsed_time_markers: dict[str, list]
+) -> None:
+    """Checks all elapsed time markers are valid."""
+    validate_numeric_markers(elapsed_time_markers, "elapsed time", True)
+
+
+def validate_pace_markers(pace_markers: dict[str, list]) -> None:
+    """Checks all pace markers are valid."""
+    validate_numeric_markers(pace_markers, "pace")
+
+
+def validate_elevation_markers(elevation_markers: dict[str, list]) -> None:
+    """Checks all elevation markers are valid."""
+    validate_numeric_markers(elevation_markers, "elevation")
+
+
+def validate_elevation_per_km_markers(
+    elevation_per_km_markers: dict[str, list]
+) -> None:
+    """Checks all elevation per km markers are valid."""
+    validate_numeric_markers(elevation_per_km_markers, "elevation per km")
+
+
+def validate_cadence_markers(cadence_markers: dict[str, list]) -> None:
+    """Checks all cadence markers are valid."""
+    validate_numeric_markers(cadence_markers, "cadence")
 
 
 def get_config() -> Config:
@@ -193,7 +243,24 @@ def get_config() -> Config:
         distance_markers = markers.get("distance", {})
         if distance_markers != {}:
             validate_distance_markers(distance_markers)
-        print(distance_markers)
+        moving_time_markers = markers.get("moving_time", {})
+        if moving_time_markers != {}:
+            validate_moving_time_markers(moving_time_markers)
+        elapsed_time_markers = markers.get("elapsed_time", {})
+        if elapsed_time_markers != {}:
+            validate_elapsed_time_markers(elapsed_time_markers)
+        pace_markers = markers.get("pace", {})
+        if pace_markers != {}:
+            validate_pace_markers(pace_markers)
+        elevation_markers = markers.get("elevation", {})
+        if elevation_markers != {}:
+            validate_elevation_markers(elevation_markers)
+        elevation_per_km_markers = markers.get("elevation_per_km", {})
+        if elevation_per_km_markers != {}:
+            validate_elevation_per_km_markers(elevation_per_km_markers)
+        cadence_markers = markers.get("cadence", {})
+        if cadence_markers != {}:
+            validate_cadence_markers(cadence_markers)
 
     heart_rate_zones = data.get("hr_zones")
     if heart_rate_zones is not None:
