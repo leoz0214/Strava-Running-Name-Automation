@@ -19,6 +19,9 @@ MAX_REFRESH_MINUTES = 60
 DEFAULT_REFRESH_MINUTES = 5
 MIN_HEART_RATE = 50
 MAX_HEART_RATE = 250
+# Hard-coded HR zones / weather string which can be placeholders.
+HR_ZONES_PLACEHOLDER = "hr_zones"
+WEATHER_PLACEHOLDER = "weather"
 
 
 @dataclass
@@ -352,6 +355,76 @@ def validate_cadence_markers(cadence_markers: dict[str, list]) -> None:
     validate_numeric_markers(cadence_markers, "cadence")
 
 
+def valid_placeholder(placeholder: str, markers: Markers) -> bool:
+    """
+    Returns True if a placeholder string is valid.
+    Specify marker_type.key and HR zones and weather placeholders
+    inside curly brackets, use double curly brackets to escape.
+    Format checking is performed to ensure correctness.
+    """
+    if placeholder in (HR_ZONES_PLACEHOLDER, WEATHER_PLACEHOLDER):
+        return True
+    if placeholder.count(".") != 1:
+        return False
+    marker_metric, key = placeholder.split(".")
+    return key in getattr(markers, marker_metric, {})
+
+
+def validate_placeholder_string(
+    placeholder_string: str, field: str, markers: Markers
+) -> None:
+    """Ensures title/description format string is indeed valid."""
+    curly_brackets_opened = False
+    invalid_message = f"Invalid template {field} placeholder string."
+    opening_curly_brackets_streak = False
+    start_i = None
+    for i in range(len(placeholder_string)):
+        if placeholder_string[i] == "{":
+            if curly_brackets_opened:
+                raise ValueError(invalid_message)
+            elif (
+                (i == len(placeholder_string) - 1
+                    or placeholder_string[i+1] != "{")
+                and not opening_curly_brackets_streak
+            ):
+                curly_brackets_opened = True
+                start_i = i + 1
+            else:
+                opening_curly_brackets_streak = True
+        else:
+            opening_curly_brackets_streak = False
+        if placeholder_string[i] == "}" and curly_brackets_opened:
+            placeholder = placeholder_string[start_i:i]
+            if not valid_placeholder(placeholder, markers):
+                raise ValueError(
+                    "Invalid placeholder for template "
+                    f"{field}: '{placeholder}'")
+            curly_brackets_opened = False
+    if curly_brackets_opened:
+        raise ValueError(invalid_message)
+
+
+def validate_template(template: dict, markers: Markers) -> None:
+    """Checks a template dictionary is valid."""
+    if not isinstance(template, dict):
+        raise TypeError("Template must be a dictionary.")
+    for key in ("title", "description"):
+        placeholder_string = template.get(key)
+        if placeholder_string in (None, []):
+            raise ValueError(f"Template {key} must be provided.")
+        elif isinstance(placeholder_string, str):
+            validate_placeholder_string(placeholder_string, key, markers)
+        elif isinstance(placeholder_string, list):
+            # Multiple strings for fallback purposes.
+            for option in placeholder_string:
+                if not isinstance(option, str):
+                    raise TypeError(f"Template {key} must be a string.")
+                validate_placeholder_string(option, key, markers)
+        else:
+            raise TypeError(
+                f"Template {key} must be a string or array of strings.")
+
+
 def get_config() -> Config:
     """Loads, validates and returns the configuration data."""
     try:
@@ -411,6 +484,14 @@ def get_config() -> Config:
             distance_markers, moving_time_markers, elapsed_time_markers,
             pace_markers, start_time_markers, date_markers,
             elevation_markers, elevation_per_km_markers, cadence_markers)
+    
+    templates = data.get("templates")
+    if templates is not None:
+        if not isinstance(templates, list):
+            raise TypeError("Templates must be an array.")
+        for template in templates:
+            validate_template(template, markers)
+        print(templates)
 
     heart_rate_zones = data.get("hr_zones")
     if heart_rate_zones is not None:
