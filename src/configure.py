@@ -376,17 +376,21 @@ def validate_placeholder_string(
     """Ensures title/description format string is indeed valid."""
     curly_brackets_opened = False
     invalid_message = f"Invalid template {field} placeholder string."
+    # This variable keeps track of consecutive curly brackets
+    # such that consecutive curly brackets are escaped (not opening).
     opening_curly_brackets_streak = False
     start_i = None
     for i in range(len(placeholder_string)):
         if placeholder_string[i] == "{":
             if curly_brackets_opened:
+                # Cannot open placeholder again if already opened.
                 raise ValueError(invalid_message)
             elif (
                 (i == len(placeholder_string) - 1
                     or placeholder_string[i+1] != "{")
                 and not opening_curly_brackets_streak
             ):
+                # Standalone curly bracket (opening of placeholder).
                 curly_brackets_opened = True
                 start_i = i + 1
             else:
@@ -394,6 +398,7 @@ def validate_placeholder_string(
         else:
             opening_curly_brackets_streak = False
         if placeholder_string[i] == "}" and curly_brackets_opened:
+            # Closing of placeholder.
             placeholder = placeholder_string[start_i:i]
             if not valid_placeholder(placeholder, markers):
                 raise ValueError(
@@ -401,7 +406,71 @@ def validate_placeholder_string(
                     f"{field}: '{placeholder}'")
             curly_brackets_opened = False
     if curly_brackets_opened:
+        # End of string reached with curly brackets still open.
         raise ValueError(invalid_message)
+    
+
+def validate_template_restriction(restriction: dict) -> None:
+    """
+    Validates a template restriction dictionary.
+    Make a template only applicable for activities in a certain
+    distance, pace or start time range.
+    """
+    if not isinstance(restriction, dict):
+        raise TypeError("Template restriction must be a dictionary.")
+    for key, metric in (
+        ("distance", "distance"),
+        ("pace", "pace"),
+        ("start_time", "start time")
+    ):
+        metric_restriction = restriction.get(key)
+        if metric_restriction in (None, []):
+            continue
+        if not isinstance(metric_restriction, list):
+            raise TypeError(
+                f"Template {metric} restrictions must be an array.")
+        metric_ranges = (
+            metric_restriction if isinstance(metric_restriction[0], list)
+                else [metric_restriction])
+        for metric_range in metric_ranges:
+            if not isinstance(metric_range, list):
+                raise TypeError(
+                    f"Template {metric} restriction range must be an array.")
+            if len(metric_range) != 2:
+                raise ValueError(
+                    f"Template {metric} restriction range array "
+                    "must be length 2.")
+            lower, upper = metric_range
+            if key == "start_time":
+                # Validate start times.
+                for bound, start_time in (("min", lower), ("max", upper)):
+                    if not isinstance(start_time, str):
+                        raise TypeError(
+                            f"Template {bound} {metric} "
+                            "must be a HHMM string.")
+                    if not valid_hhmm_string(start_time):
+                        raise ValueError(
+                            f"Template {bound} {metric} "
+                            "must be a 24-hour HHMM string.")
+                if lower == upper:
+                    raise ValueError(
+                        f"Template min {metric} must not equal max {metric}.")
+                continue
+            # Validate distance/pace ranges.
+            if lower is None:
+                raise TypeError(f"Template min {metric} cannot be null.")
+            if not isinstance(lower, numbers.Number):
+                raise TypeError(f"Template min {metric} must be numeric.")
+            if lower < 0:
+                raise ValueError(
+                    f"Template min {metric} must be non-negative.")
+            if upper is not None:
+                if not isinstance(upper, numbers.Number):
+                    raise TypeError(f"Template max {metric} must be numeric.")
+                if upper <= lower:
+                    raise ValueError(
+                        f"Template max {metric} must be "
+                        f"greater than min {metric}.")
 
 
 def validate_template(template: dict, markers: Markers) -> None:
@@ -423,6 +492,12 @@ def validate_template(template: dict, markers: Markers) -> None:
         else:
             raise TypeError(
                 f"Template {key} must be a string or array of strings.")
+    priority = template.get("priority")
+    if priority is not None and not isinstance(priority, int):
+        raise TypeError("Template priority must be an integer.")
+    restriction = template.get("restrict")
+    if restriction is not None:
+        validate_template_restriction(restriction)
 
 
 def get_config() -> Config:
