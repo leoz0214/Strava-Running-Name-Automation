@@ -22,6 +22,10 @@ MAX_HEART_RATE = 250
 # Hard-coded HR zones / weather string which can be placeholders.
 HR_ZONES_PLACEHOLDER = "hr_zones"
 WEATHER_PLACEHOLDER = "weather"
+# Latitude/longitude limits, default point radius in metres.
+MAX_ABS_LATITUDE = 90
+MAX_ABS_LONGITUDE = 180
+DEFAULT_POINT_RADIUS = 25
 
 
 @dataclass
@@ -371,11 +375,12 @@ def valid_placeholder(placeholder: str, markers: Markers) -> bool:
 
 
 def validate_placeholder_string(
-    placeholder_string: str, field: str, markers: Markers
+    placeholder_string: str, field: str, markers: Markers, is_route: bool
 ) -> None:
     """Ensures title/description format string is indeed valid."""
     curly_brackets_opened = False
-    invalid_message = f"Invalid template {field} placeholder string."
+    label = "route template" if is_route else "template"
+    invalid_message = f"Invalid {label} {field} placeholder string."
     # This variable keeps track of consecutive curly brackets
     # such that consecutive curly brackets are escaped (not opening).
     opening_curly_brackets_streak = False
@@ -402,7 +407,7 @@ def validate_placeholder_string(
             placeholder = placeholder_string[start_i:i]
             if not valid_placeholder(placeholder, markers):
                 raise ValueError(
-                    "Invalid placeholder for template "
+                    f"Invalid placeholder for {label} "
                     f"{field}: '{placeholder}'")
             curly_brackets_opened = False
     if curly_brackets_opened:
@@ -410,14 +415,15 @@ def validate_placeholder_string(
         raise ValueError(invalid_message)
     
 
-def validate_template_restriction(restriction: dict) -> None:
+def validate_template_restriction(restriction: dict, is_route: bool) -> None:
     """
     Validates a template restriction dictionary.
     Make a template only applicable for activities in a certain
     distance, pace or start time range.
     """
+    label = "Route template" if is_route else "Template"
     if not isinstance(restriction, dict):
-        raise TypeError("Template restriction must be a dictionary.")
+        raise TypeError(f"{label} restriction must be a dictionary.")
     for key, metric in (
         ("distance", "distance"),
         ("pace", "pace"),
@@ -428,17 +434,17 @@ def validate_template_restriction(restriction: dict) -> None:
             continue
         if not isinstance(metric_restriction, list):
             raise TypeError(
-                f"Template {metric} restrictions must be an array.")
+                f"{label} {metric} restrictions must be an array.")
         metric_ranges = (
             metric_restriction if isinstance(metric_restriction[0], list)
                 else [metric_restriction])
         for metric_range in metric_ranges:
             if not isinstance(metric_range, list):
                 raise TypeError(
-                    f"Template {metric} restriction range must be an array.")
+                    f"{label} {metric} restriction range must be an array.")
             if len(metric_range) != 2:
                 raise ValueError(
-                    f"Template {metric} restriction range array "
+                    f"{label} {metric} restriction range array "
                     "must be length 2.")
             lower, upper = metric_range
             if key == "start_time":
@@ -446,58 +452,125 @@ def validate_template_restriction(restriction: dict) -> None:
                 for bound, start_time in (("min", lower), ("max", upper)):
                     if not isinstance(start_time, str):
                         raise TypeError(
-                            f"Template {bound} {metric} "
-                            "must be a HHMM string.")
+                            f"{label} {bound} {metric} must be a HHMM string.")
                     if not valid_hhmm_string(start_time):
                         raise ValueError(
-                            f"Template {bound} {metric} "
+                            f"{label} {bound} {metric} "
                             "must be a 24-hour HHMM string.")
                 if lower == upper:
                     raise ValueError(
-                        f"Template min {metric} must not equal max {metric}.")
+                        f"{label} min {metric} must not equal max {metric}.")
                 continue
             # Validate distance/pace ranges.
             if lower is None:
-                raise TypeError(f"Template min {metric} cannot be null.")
+                raise TypeError(f"{label} min {metric} cannot be null.")
             if not isinstance(lower, numbers.Number):
-                raise TypeError(f"Template min {metric} must be numeric.")
+                raise TypeError(f"{label} min {metric} must be numeric.")
             if lower < 0:
                 raise ValueError(
-                    f"Template min {metric} must be non-negative.")
+                    f"{label} min {metric} must be non-negative.")
             if upper is not None:
                 if not isinstance(upper, numbers.Number):
-                    raise TypeError(f"Template max {metric} must be numeric.")
+                    raise TypeError(f"{label} max {metric} must be numeric.")
                 if upper <= lower:
                     raise ValueError(
-                        f"Template max {metric} must be "
+                        f"{label} max {metric} must be "
                         f"greater than min {metric}.")
+    if is_route:
+        # Route restrictions also may contain blacklist of points.
+        blacklist_points = restriction.get("blacklist")
+        validate_points(blacklist_points, is_blacklist=True)
 
 
-def validate_template(template: dict, markers: Markers) -> None:
-    """Checks a template dictionary is valid."""
+def validate_template(
+    template: dict, markers: Markers, is_route: bool = False
+) -> None:
+    """
+    Checks a template dictionary is valid.
+    is_route set to True means the template is a route template,
+    using this function to avoid repetition.
+    """
+    label = "Route template" if is_route else "Template"
     if not isinstance(template, dict):
-        raise TypeError("Template must be a dictionary.")
+        raise TypeError(f"{label} must be a dictionary.")
     for key in ("title", "description"):
         placeholder_string = template.get(key)
         if placeholder_string in (None, []):
-            raise ValueError(f"Template {key} must be provided.")
+            raise ValueError(f"{label} {key} must be provided.")
         elif isinstance(placeholder_string, str):
-            validate_placeholder_string(placeholder_string, key, markers)
+            validate_placeholder_string(
+                placeholder_string, key, markers, is_route)
         elif isinstance(placeholder_string, list):
             # Multiple strings for fallback purposes.
             for option in placeholder_string:
                 if not isinstance(option, str):
-                    raise TypeError(f"Template {key} must be a string.")
-                validate_placeholder_string(option, key, markers)
+                    raise TypeError(f"{label} {key} must be a string.")
+                validate_placeholder_string(option, key, markers, is_route)
         else:
             raise TypeError(
-                f"Template {key} must be a string or array of strings.")
+                f"{label} {key} must be a string or array of strings.")
     priority = template.get("priority")
     if priority is not None and not isinstance(priority, int):
-        raise TypeError("Template priority must be an integer.")
+        raise TypeError(f"{label} priority must be an integer.")
     restriction = template.get("restrict")
     if restriction is not None:
-        validate_template_restriction(restriction)
+        validate_template_restriction(restriction, is_route)
+
+
+def validate_points(
+    points: list[list[float]] | None, is_blacklist: bool = False
+) -> None:
+    """
+    Validates a list of points in the format [lat, long, (radius)],
+    either as the route required points or route blacklist of points.
+    """
+    label = "blacklist point" if is_blacklist else "point"
+    # Main list of points must be non-empty array.
+    # Blacklist can be null or empty array, but not other types.
+    if not is_blacklist and not isinstance(points, list):
+        raise TypeError(f"Route template {label} must be a non-empty array.")
+    if is_blacklist:
+        if points is None:
+            return
+        if not isinstance(points, list):
+            raise TypeError(f"Route template {label} must be an array.")
+    for point in points:
+        if not isinstance(point, list):
+            raise TypeError(f"Route template {label} must be an array.")
+        if len(point) == 2:
+            latitude, longitude = point
+            radius = DEFAULT_POINT_RADIUS
+        elif len(point) == 3:
+            latitude, longitude, radius = point
+        else:
+            raise ValueError(f"Invalid route template {label} found.")
+        if not isinstance(latitude, numbers.Number):
+            raise TypeError(
+                f"Route template {label} latitude must be numeric.")
+        if abs(latitude) > MAX_ABS_LATITUDE:
+            raise ValueError(f"Route template {label} latitude out of range.")
+        if not isinstance(longitude, numbers.Number):
+            raise TypeError(
+                f"Route template {label} longitude must be numeric.")
+        if abs(longitude) > MAX_ABS_LONGITUDE:
+            raise ValueError(f"Route template {label} longitude out of range.")
+        if not isinstance(radius, numbers.Number):
+            raise TypeError(f"Route template {label} radius must be numeric.")
+        if radius <= 0:
+            raise TypeError(f"Route template {label} radius must be positive.")
+
+
+def validate_route_template(route_template: dict, markers: Markers) -> None:
+    """
+    Checks a route template dictionary is valid.
+    A route template is an extension to a standard template except
+    a list of lat/long points need to be reached in the route for a template
+    to be valid. As exact matching is impractical, a radius (margin of error)
+    can be set, where any point in the run within that radius is accepted.
+    """
+    validate_template(route_template, markers, is_route=True)
+    points = route_template.get("points")
+    validate_points(points)
 
 
 def get_config() -> Config:
@@ -566,7 +639,14 @@ def get_config() -> Config:
             raise TypeError("Templates must be an array.")
         for template in templates:
             validate_template(template, markers)
-        print(templates)
+
+    route_templates = data.get("route_templates")
+    if route_templates is not None:
+        if not isinstance(route_templates, list):
+            raise TypeError("Route templates must be an array.")
+        for route_template in route_templates:
+            validate_route_template(route_template, markers)
+    print(route_templates)
 
     heart_rate_zones = data.get("hr_zones")
     if heart_rate_zones is not None:

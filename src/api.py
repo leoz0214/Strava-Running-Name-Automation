@@ -42,7 +42,6 @@ def make_request(
                 validate_function is not None
                 and not validate_function(response)
             ):
-                print(response.text)
                 raise RuntimeError("Validation failed.")
             return response
         except Exception as e:
