@@ -43,12 +43,53 @@ class Markers:
 
 
 @dataclass
+class Point:
+    """Latitude, longitude, radius data class (for route templates)."""
+    latitude: float
+    longitude: float
+    radius: float = DEFAULT_POINT_RADIUS
+
+
+@dataclass
+class Restriction:
+    """Template restrictions data class."""
+    distance: list[float] | list[list[float]] | None
+    pace: list[float] | list[list[float]] | None
+    start_time: list[str] | list[list[str]] | None
+
+
+@dataclass
+class RouteRestriction(Restriction):
+    """Route template restrictions data class."""
+    blacklist: list[Point] | None
+
+
+@dataclass
+class Template:
+    """Activity title/description template data class."""
+    title: str | list[str]
+    decription: str | list[str]
+    priority: int | None
+    restriction: Restriction | None
+
+
+@dataclass
+class RouteTemplate(Template):
+    """Activity title/description route template data class."""
+    restriction: RouteRestriction | None
+    points: list[Point]
+
+
+@dataclass
 class Config:
     """All configuration data stored in one data class."""
     client_id: int
     client_secret: str
     refresh_minutes: int
     markers: Markers | None
+    templates: list[Template] | None
+    route_templates: list[RouteTemplate] | None
+    heart_rate_zones: dict[int, int] | None
 
 
 def validate_client_id(client_id: int) -> None:
@@ -639,6 +680,20 @@ def get_config() -> Config:
             raise TypeError("Templates must be an array.")
         for template in templates:
             validate_template(template, markers)
+        templates_list = []
+        for template in templates:
+            restrict = template.get("restrict")
+            if restrict is not None:
+                restriction = Restriction(
+                    restrict.get("distance"), restrict.get("pace"),
+                    restrict.get("start_time"))
+            else:
+                restriction = None
+            template = Template(
+                template["title"], template["description"],
+                template.get("priority"), restriction)
+            templates_list.append(template)
+        templates = templates_list
 
     route_templates = data.get("route_templates")
     if route_templates is not None:
@@ -646,7 +701,22 @@ def get_config() -> Config:
             raise TypeError("Route templates must be an array.")
         for route_template in route_templates:
             validate_route_template(route_template, markers)
-    print(route_templates)
+        route_templates_list = []
+        for route_template in route_templates:
+            restrict = route_template.get("restrict")
+            if restrict is not None:
+                blacklist = restrict.get("blacklist")
+                if blacklist is not None:
+                    blacklist = [Point(*point) for point in blacklist]
+                restriction = RouteRestriction(
+                    restrict.get("distance"), restrict.get("pace"),
+                    restrict.get("start_time"), blacklist)
+            points = [Point(*point) for point in route_template["points"]]
+            route_template = RouteTemplate(
+                route_template["title"], route_template["description"],
+                route_template.get("priority"), restriction, points)
+            route_templates_list.append(route_template)
+        route_templates = route_templates_list
 
     heart_rate_zones = data.get("hr_zones")
     if heart_rate_zones is not None:
@@ -655,4 +725,6 @@ def get_config() -> Config:
             int(zone): heart_rate
             for zone, heart_rate in heart_rate_zones.items()}
 
-    return Config(client_id, client_secret, refresh_minutes, markers)
+    return Config(
+        client_id, client_secret, refresh_minutes,
+        markers, templates, route_templates, heart_rate_zones)
