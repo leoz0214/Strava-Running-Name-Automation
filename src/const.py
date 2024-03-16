@@ -12,3 +12,7 @@ SEEN_ACTIVITIES_FILE = DATA_FOLDER / "_seen_activities.txt"
 # depending the location of the DB.
 # At least this is better than hard-coding the absolute path...
 WEATHER_DB_FILE = FOLDER.parent / "WeatherAutomation" / "data" / "database.db"
+
+BIN_FOLDER = FOLDER / "bin"
+GEO_DLL_FILE = BIN_FOLDER / "geo.dll"
+GEO_SO_FILE = BIN_FOLDER / "geo.so"

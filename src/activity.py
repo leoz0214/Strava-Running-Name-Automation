@@ -79,7 +79,7 @@ class Activity:
     elevation: float | None
     elevation_per_km: float | None
     cadence: float | None
-    lat_long_stream: list[list[int]] | None
+    lat_long_stream: list[list[float]] | None
     heart_rate_stream: list[int] | None
     weather: Weather | None
 
