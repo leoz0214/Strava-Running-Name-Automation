@@ -5,12 +5,12 @@ Also provides the Activity data class for obtaining various activity metrics.
 """
 import datetime as dt
 import logging
-import math
 import sqlite3
 from dataclasses import dataclass
 
 import api
 from const import SEEN_ACTIVITIES_FILE, WEATHER_DB_FILE
+from utils import haversine_distance
 
 
 GET_ACTIVITIES_URL = f"{api.API_URL}/athlete/activities"
@@ -28,8 +28,6 @@ ISO_DATE_LENGTH = len("YYYY-MM-DDTHH:MM:SS")
 # Maximum allowed distance between activity start position
 # and weather forecast lat/long.
 MAX_WEATHER_DISTANCE = 20
-# For haversine distance calculation.
-EARTH_RADIUS = 6378.137
 # Weather visibilites int to string as seen in the BBC Weather project.
 VISIBILITIES = {
     0: "Very Poor", 1: "Poor", 2: "Moderate",
@@ -99,21 +97,6 @@ def update_seen_activities(seen_activities: set[int]) -> None:
     """Updates the seen activities file."""
     with SEEN_ACTIVITIES_FILE.open("w", encoding="utf8") as f:
         f.write("\n".join(map(str, sorted(seen_activities))))
-
-
-def haversine_distance(
-    lat1: float, long1: float, lat2: float, long2: float
-) -> float:
-    """Haversine distance between two lat/long points in km."""
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(long2 - long1)
-    lat1 = math.radians(lat1)
-    lat2 = math.radians(lat2)
-    a = (
-        math.sin(dlat / 2)**2 +
-        math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2)
-    c = 2 * math.asin(math.sqrt(a))
-    return EARTH_RADIUS * c
 
 
 def get_weather(
