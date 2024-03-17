@@ -68,7 +68,7 @@ class RouteRestriction(Restriction):
 class Template:
     """Activity title/description template data class."""
     title: str | list[str]
-    decription: str | list[str]
+    description: str | list[str]
     priority: int | None
     restriction: Restriction | None
 
@@ -400,15 +400,19 @@ def validate_cadence_markers(cadence_markers: dict[str, list]) -> None:
     validate_numeric_markers(cadence_markers, "cadence")
 
 
-def valid_placeholder(placeholder: str, markers: Markers) -> bool:
+def valid_placeholder(
+    placeholder: str, markers: Markers, has_hr_zones: bool
+) -> bool:
     """
     Returns True if a placeholder string is valid.
     Specify marker_type.key and HR zones and weather placeholders
     inside curly brackets, use double curly brackets to escape.
     Format checking is performed to ensure correctness.
     """
-    if placeholder in (HR_ZONES_PLACEHOLDER, WEATHER_PLACEHOLDER):
+    if placeholder == WEATHER_PLACEHOLDER:
         return True
+    if placeholder == HR_ZONES_PLACEHOLDER:
+        return has_hr_zones
     if placeholder.count(".") != 1:
         return False
     marker_metric, key = placeholder.split(".")
@@ -416,7 +420,8 @@ def valid_placeholder(placeholder: str, markers: Markers) -> bool:
 
 
 def validate_placeholder_string(
-    placeholder_string: str, field: str, markers: Markers, is_route: bool
+    placeholder_string: str, field: str, markers: Markers, is_route: bool,
+    has_hr_zones: bool
 ) -> None:
     """Ensures title/description format string is indeed valid."""
     curly_brackets_opened = False
@@ -446,7 +451,12 @@ def validate_placeholder_string(
         if placeholder_string[i] == "}" and curly_brackets_opened:
             # Closing of placeholder.
             placeholder = placeholder_string[start_i:i]
-            if not valid_placeholder(placeholder, markers):
+            if not valid_placeholder(placeholder, markers, has_hr_zones):
+                if placeholder == HR_ZONES_PLACEHOLDER:
+                    raise ValueError(
+                        f"Invalid placeholder for {label} {field}: "
+                        f"'{placeholder}', because heart rate zones "
+                        "have not been set.")
                 raise ValueError(
                     f"Invalid placeholder for {label} "
                     f"{field}: '{placeholder}'")
@@ -524,7 +534,8 @@ def validate_template_restriction(restriction: dict, is_route: bool) -> None:
 
 
 def validate_template(
-    template: dict, markers: Markers, is_route: bool = False
+    template: dict, markers: Markers,
+    has_hr_zones: bool, is_route: bool = False
 ) -> None:
     """
     Checks a template dictionary is valid.
@@ -540,13 +551,14 @@ def validate_template(
             raise ValueError(f"{label} {key} must be provided.")
         elif isinstance(placeholder_string, str):
             validate_placeholder_string(
-                placeholder_string, key, markers, is_route)
+                placeholder_string, key, markers, is_route, has_hr_zones)
         elif isinstance(placeholder_string, list):
             # Multiple strings for fallback purposes.
             for option in placeholder_string:
                 if not isinstance(option, str):
                     raise TypeError(f"{label} {key} must be a string.")
-                validate_placeholder_string(option, key, markers, is_route)
+                validate_placeholder_string(
+                    option, key, markers, is_route, has_hr_zones)
         else:
             raise TypeError(
                 f"{label} {key} must be a string or array of strings.")
@@ -601,7 +613,9 @@ def validate_points(
             raise TypeError(f"Route template {label} radius must be positive.")
 
 
-def validate_route_template(route_template: dict, markers: Markers) -> None:
+def validate_route_template(
+    route_template: dict, markers: Markers, has_hr_zones: bool
+) -> None:
     """
     Checks a route template dictionary is valid.
     A route template is an extension to a standard template except
@@ -609,7 +623,7 @@ def validate_route_template(route_template: dict, markers: Markers) -> None:
     to be valid. As exact matching is impractical, a radius (margin of error)
     can be set, where any point in the run within that radius is accepted.
     """
-    validate_template(route_template, markers, is_route=True)
+    validate_template(route_template, markers, has_hr_zones, is_route=True)
     points = route_template.get("points")
     validate_points(points)
 
@@ -673,13 +687,20 @@ def get_config() -> Config:
             distance_markers, moving_time_markers, elapsed_time_markers,
             pace_markers, start_time_markers, date_markers,
             elevation_markers, elevation_per_km_markers, cadence_markers)
+
+    heart_rate_zones = data.get("hr_zones")
+    if heart_rate_zones is not None:
+        validate_heart_rate_zones(heart_rate_zones)
+        heart_rate_zones = {
+            int(zone): heart_rate
+            for zone, heart_rate in heart_rate_zones.items()}
     
     templates = data.get("templates")
     if templates is not None:
         if not isinstance(templates, list):
             raise TypeError("Templates must be an array.")
         for template in templates:
-            validate_template(template, markers)
+            validate_template(template, markers, heart_rate_zones is not None)
         templates_list = []
         for template in templates:
             restrict = template.get("restrict")
@@ -700,7 +721,8 @@ def get_config() -> Config:
         if not isinstance(route_templates, list):
             raise TypeError("Route templates must be an array.")
         for route_template in route_templates:
-            validate_route_template(route_template, markers)
+            validate_route_template(
+                route_template, markers, heart_rate_zones is not None)
         route_templates_list = []
         for route_template in route_templates:
             restrict = route_template.get("restrict")
@@ -717,13 +739,6 @@ def get_config() -> Config:
                 route_template.get("priority"), restriction, points)
             route_templates_list.append(route_template)
         route_templates = route_templates_list
-
-    heart_rate_zones = data.get("hr_zones")
-    if heart_rate_zones is not None:
-        validate_heart_rate_zones(heart_rate_zones)
-        heart_rate_zones = {
-            int(zone): heart_rate
-            for zone, heart_rate in heart_rate_zones.items()}
 
     return Config(
         client_id, client_secret, refresh_minutes,

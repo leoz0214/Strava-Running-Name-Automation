@@ -5,6 +5,8 @@ activity if possible, based on the configuration details.
 import array
 import ctypes
 import platform
+import random
+from contextlib import suppress
 from typing import Callable
 
 import activity
@@ -162,6 +164,143 @@ def matching_route_template(
         and all_points_touched(route_template.points, lat_longs))
 
 
+def get_numeric_text(
+    value: int | float | None, placeholder: str, config: configure.Config,
+    is_description: bool
+) -> str:
+    """
+    Returns title/description of a basic numeric metric in the format
+    [min, max, title, (desc)]. Activity metric must be [min, max).
+    """
+    # [texts] - list of lists of texts.
+    in_range_texts_list = []
+    else_texts_list = []
+    if value is None:
+        # Set value to dummy -float(inf).
+        value = -float("inf")
+    metric, key = placeholder.split(".")
+    intervals = getattr(config.markers, metric)[key]
+    for interval in intervals:
+        if len(interval) == 3:
+            lower, upper, titles = interval
+            descriptions = None
+        else:
+            lower, upper, titles, descriptions = interval
+        if isinstance(titles, str):
+            titles = [titles]
+        if isinstance(descriptions, str):
+            descriptions = [descriptions]
+        if lower is None and upper is None:
+            text_list = else_texts_list
+        elif lower <= value < (float("inf") if upper is None else upper):
+            text_list = in_range_texts_list
+        else:
+            continue
+        if is_description and descriptions:
+            text_list.append(descriptions)
+        elif not is_description and titles:
+            text_list.append(titles)
+    if in_range_texts_list:
+        return random.choice(random.choice(in_range_texts_list))
+    elif else_texts_list:
+        return random.choice(random.choice(else_texts_list))
+    raise RuntimeError
+
+
+def get_placeholder_value(
+    activity_: activity.Activity, placeholder: str, config: configure.Config,
+    is_description: bool
+) -> str:
+    """
+    Takes a placeholder and interprets it in the context of an activity.
+    Raises an error if the placeholder is not compatible with the activity.
+    """
+    metric = placeholder.split(".")[0] # metric.key - extract metric
+    match metric:
+        case configure.HR_ZONES_PLACEHOLDER:
+            if activity_.heart_rate_stream is None:
+                raise RuntimeError
+            return ""
+        case configure.WEATHER_PLACEHOLDER:
+            if activity_.weather is None:
+                raise RuntimeError
+            return ""
+        case "start_time":
+            return ""
+        case "date":
+            return ""
+        case _:
+            value = {
+                "distance": activity_.distance,
+                "moving_time": activity_.moving_time,
+                "elapsed_time": activity_.elapsed_time,
+                "pace": activity_.pace,
+                "elevation": activity_.elevation,
+                "elevation_per_km": activity_.elevation_per_km,
+                "cadence": activity_.cadence
+            }[metric]
+            return get_numeric_text(
+                value, placeholder, config, is_description)
+
+
+def format_placeholder_string(
+    activity_: activity.Activity, placeholder_string: str,
+    config: configure.Config, is_description: bool
+) -> str:
+    """
+    Attempts to fill in a placeholder string with given text based on
+    activity metrics. Raises an error upon failure e.g. placeholder string
+    requires weather data, but the activity has no weather data.
+    """
+    # Use list to avoid inefficient string concatenation (join at end).
+    result = []
+    opening_curly_bracket_streak = False
+    start_i = None
+    # NOTE: validation already done beforehand on the string, no need to
+    # do validation again - straight to the point.
+    for i in range(len(placeholder_string)):
+        if placeholder_string[i] == "{":
+            if (
+                i < len(placeholder_string) - 1
+                and placeholder_string[i+1] != "{"
+                and not opening_curly_bracket_streak
+            ):
+                start_i = i + 1
+            else:
+                opening_curly_bracket_streak = True
+                result.append("{")
+            continue
+        opening_curly_bracket_streak = False
+        if placeholder_string[i] == "}" and start_i is not None:
+            placeholder = placeholder_string[start_i:i]
+            placeholder_value = get_placeholder_value(
+                activity_, placeholder, config, is_description)
+            result.append(placeholder_value)
+            start_i = None
+            continue
+        if start_i is None:
+            result.append(placeholder_string[i])
+    return "".join(result)
+
+
+def generate_text(
+    activity_: activity.Activity, placeholder_strings: str | list[str],
+    config: configure.Config, is_description: bool = False
+) -> str:
+    """
+    Attempts to generate a title/description given
+    a single or list of placeholder strings. Raises an error if none
+    of the placeholder strings can be applied to the given activity.
+    """
+    if isinstance(placeholder_strings, str):
+        placeholder_strings = [placeholder_strings]
+    for placeholder_string in placeholder_strings:
+        with suppress(RuntimeError):
+            return format_placeholder_string(
+                activity_, placeholder_string, config, is_description)
+    raise RuntimeError
+
+
 def generate_title_and_description(
     activity_: activity.Activity, config: configure.Config
 ) -> tuple[str, str]:
@@ -182,6 +321,12 @@ def generate_title_and_description(
                     activity_, route_template, lat_longs
                 ):
                     continue
+                with suppress(RuntimeError):
+                    title = generate_text(
+                        activity_, route_template.title, config)
+                    description = generate_text(
+                        activity_, route_template.description, config, True)
+                    return title, description
     templates = sorted(config.templates or [], key=priority_key)
     for template in templates:
         if (
@@ -189,3 +334,10 @@ def generate_title_and_description(
             and not passes_restriction(activity_, template.restriction)
         ):
             continue
+        with suppress(RuntimeError):
+            title = generate_text(activity_, template.title, config)
+            description = generate_text(
+                activity_, template.description, config, True)
+            return title, description
+    raise RuntimeError(
+        f"No suitable template found for activity {activity_.id}, skipping...")

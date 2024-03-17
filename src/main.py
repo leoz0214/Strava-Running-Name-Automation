@@ -22,10 +22,12 @@ def main() -> None:
         access_token = api.get_access_token(config)
         activities = activity.get_activities(access_token)
         for activity_ in activities:
-            if not activity.can_process_activity(activity_):
-                continue
+            # if not activity.can_process_activity(activity_):
+            #     continue
             title, description = (
                 generate.generate_title_and_description(activity_, config))
+            print(f"Title: {title}")
+            print(f"Desc: {description}")
         if activities:
             logging.info("New activities processed and any renames applied.")
         else:
