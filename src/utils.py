@@ -23,3 +23,18 @@ def haversine_distance(
 def hhmm_to_minutes(hhmm: str) -> int:
     """Converts HHMM to minutes since 0000."""
     return int(hhmm[:2]) * 60 + int(hhmm[2:])
+
+
+def seconds_to_mmss(seconds: float) -> str:
+    """Converts seconds to MM:SS"""
+    seconds = int(seconds)
+    minutes, seconds = divmod(seconds, 60)
+    return f"{str(minutes).zfill(2)}:{str(seconds).zfill(2)}"
+
+
+def seconds_to_hhmmss(seconds: float) -> str:
+    """Converts seconds to HH:MM:SS"""
+    seconds = int(seconds)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    return ":".join(str(part).zfill(2) for part in (hours, minutes, seconds))

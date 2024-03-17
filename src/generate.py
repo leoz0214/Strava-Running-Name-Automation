@@ -5,6 +5,7 @@ activity if possible, based on the configuration details.
 import array
 import ctypes
 import datetime as dt
+import logging
 import platform
 import random
 from contextlib import suppress
@@ -13,7 +14,8 @@ from typing import Callable
 import activity
 import configure
 from const import GEO_DLL_FILE, GEO_SO_FILE
-from utils import hhmm_to_minutes, haversine_distance
+from utils import (
+    hhmm_to_minutes, haversine_distance, seconds_to_mmss, seconds_to_hhmmss)
 
 
 priority_key = lambda template: (
@@ -300,12 +302,59 @@ def get_heart_rate_text(
     heart_rate_zones: dict[int, int]
 ) -> str:
     """Returns heart rate zones text outlining time spent in HR Zones 1-5."""
-    # TODO
+    zone_times = dict.fromkeys(heart_rate_zones, 0)
+    total_time = time_stream[-1]
+    heart_rate_zones = dict(
+        sorted(heart_rate_zones.items(), key=lambda item: item[0],
+            reverse=True))
+    for i in range(len(heart_rate_stream)):
+        duration = time_stream[i] - (0 if i == 0 else time_stream[i-1])
+        heart_rate = heart_rate_stream[i]
+        previous_heart_rate = heart_rate if i == 0 else heart_rate_stream[i-1]
+        # Treat heart rate change as linear - straight line increase/decrease.
+        # At least better than registering entire duration as a single HR.
+        gradient = (heart_rate - previous_heart_rate) / duration
+        if gradient == 0:
+            # No HR change since last sample.
+            for zone, zone_threshold in heart_rate_zones.items():
+                if heart_rate >= zone_threshold:
+                    zone_times[zone] += duration
+                    break
+            continue
+        # heart rate = gradient * time + previous heart rate
+        for zone, zone_threshold in heart_rate_zones.items():
+            zone_upper = heart_rate_zones.get(zone + 1, 1000)
+            lower_time = (zone_threshold - previous_heart_rate) / gradient
+            upper_time = (zone_upper - previous_heart_rate) / gradient
+            if not (
+                (lower_time < 0 and upper_time < 0)
+                or (lower_time > duration and upper_time > duration)
+            ):
+                # Part of the time was indeed spent in this zone. Add it.
+                lower_time = max(min(lower_time, duration), 0)
+                upper_time = max(min(upper_time, duration), 0)
+                zone_times[zone] += abs(upper_time - lower_time)
+    lines = ["Time spent in HR zones:"]
+    for zone in range(5, 0, -1):
+        seconds = zone_times[zone]
+        duration = (
+            seconds_to_mmss(seconds) if seconds < 3600
+            else seconds_to_hhmmss(seconds))
+        percentage = seconds / total_time * 100
+        lines.append(f"Zone {zone}: {duration} ({percentage:.0f}%)")
+    return "\n".join(lines)
 
 
 def get_weather_text(weather: activity.Weather) -> str:
     """Returns a string detailing the weather conditions of an activity."""
-    # TODO
+    return "\n".join((
+        f"Temperature: {weather.temperature}°C "
+            f"(felt like {weather.feels_like_temperature}°C)",
+        f"Conditions: {weather.weather_type}",
+        f"Wind: {weather.wind_speed}mph (from {weather.wind_direction})",
+        f"Humidity: {weather.humidity}%",
+        f"Pressure: {weather.pressure}mb",
+        f"Visibility: {weather.visibility}"))
 
 
 def get_placeholder_value(
@@ -446,5 +495,6 @@ def generate_title_and_description(
             description = generate_text(
                 activity_, template.description, config, True)
             return title, description
-    raise RuntimeError(
+    logging.warning(
         f"No suitable template found for activity {activity_.id}, skipping...")
+    raise RuntimeError

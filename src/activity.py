@@ -185,6 +185,13 @@ def get_activity(activity_id: int, access_token: str) -> Activity:
         lat_long_stream = stream_data.get("latlng", {}).get("data")
         heart_rate_stream = stream_data.get("heartrate", {}).get("data")
         time_stream = stream_data.get("time", {}).get("data")
+        # Verify HR stream is the same length as the time stream.
+        if (
+            heart_rate_stream is not None
+            and len(heart_rate_stream) != len(time_stream)
+        ):
+            heart_rate_stream = None
+            time_stream = None
     else:
         lat_long_stream = None
         heart_rate_stream = None
