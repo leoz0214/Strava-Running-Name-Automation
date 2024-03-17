@@ -81,6 +81,7 @@ class Activity:
     cadence: float | None
     lat_long_stream: list[list[float]] | None
     heart_rate_stream: list[int] | None
+    time_stream: list[int] | None
     weather: Weather | None
 
 
@@ -172,25 +173,30 @@ def get_activity(activity_id: int, access_token: str) -> Activity:
     if data["has_heartrate"]:
         keys.append("heartrate")
     if keys:
+        # Also need time stream if collecting HR stream - for zones duration.
+        if "heartrate" in keys:
+            keys.append("time")
         params = {
             "access_token": access_token,
-            "keys": keys,
+            "keys": ",".join(keys),
             "key_by_type": True
         }
         stream_data = api.get(stream_url, params, api.is_status_200).json()
         lat_long_stream = stream_data.get("latlng", {}).get("data")
         heart_rate_stream = stream_data.get("heartrate", {}).get("data")
+        time_stream = stream_data.get("time", {}).get("data")
     else:
         lat_long_stream = None
         heart_rate_stream = None
+        time_stream = None
     if has_location:
         weather = get_weather(start_date_time, *data["start_latlng"])
     else:
         weather = None
     return Activity(
-        activity_id, title, description, activity_type,
-        distance, moving_time, elapsed_time, pace, start_date_time, elevation,
-        elevation_per_km, cadence, lat_long_stream, heart_rate_stream, weather)
+        activity_id, title, description, activity_type, distance, moving_time,
+        elapsed_time, pace, start_date_time, elevation, elevation_per_km,
+        cadence, lat_long_stream, heart_rate_stream, time_stream, weather)
 
 
 def get_activities(access_token: str) -> list[Activity]:

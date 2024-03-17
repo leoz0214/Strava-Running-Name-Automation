@@ -4,6 +4,7 @@ activity if possible, based on the configuration details.
 """
 import array
 import ctypes
+import datetime as dt
 import platform
 import random
 from contextlib import suppress
@@ -164,20 +165,17 @@ def matching_route_template(
         and all_points_touched(route_template.points, lat_longs))
 
 
-def get_numeric_text(
-    value: int | float | None, placeholder: str, config: configure.Config,
-    is_description: bool
+def get_interval_text(
+    value, placeholder: str, config: configure.Config,
+    is_description: bool, bounds_function: Callable
 ) -> str:
     """
-    Returns title/description of a basic numeric metric in the format
+    Returns the title/description for a given metric and key
     [min, max, title, (desc)]. Activity metric must be [min, max).
     """
     # [texts] - list of lists of texts.
     in_range_texts_list = []
     else_texts_list = []
-    if value is None:
-        # Set value to dummy -float(inf).
-        value = -float("inf")
     metric, key = placeholder.split(".")
     intervals = getattr(config.markers, metric)[key]
     for interval in intervals:
@@ -192,7 +190,7 @@ def get_numeric_text(
             descriptions = [descriptions]
         if lower is None and upper is None:
             text_list = else_texts_list
-        elif lower <= value < (float("inf") if upper is None else upper):
+        elif value is not None and bounds_function(lower, upper, value):
             text_list = in_range_texts_list
         else:
             continue
@@ -205,6 +203,109 @@ def get_numeric_text(
     elif else_texts_list:
         return random.choice(random.choice(else_texts_list))
     raise RuntimeError
+
+
+def get_numeric_text(
+    value: int | float | None, placeholder: str, config: configure.Config,
+    is_description: bool
+) -> str:
+    """
+    Returns title/description of a basic numeric metric in the format
+    [min, max, title, (desc)]. Activity metric must be [min, max).
+    """
+    def in_numeric_range(
+        lower: int | float, upper: int | float | None, value: int | float
+    ) -> bool:
+        """Returns True if lower <= value < upper. Upper None implies +inf."""
+        return lower <= value < (float("inf") if upper is None else upper)
+    return get_interval_text(
+        value, placeholder, config, is_description, in_numeric_range)
+
+
+def get_start_time_text(
+    start_time: dt.time, placeholder: str, config: configure.Config,
+    is_description: bool
+) -> None:
+    """Returns text for start time metric placeholder."""
+    def in_start_time_range(lower: str, upper: str, value: dt.time) -> bool:
+        """
+        Returns True if a 24-hour time is within range of two times 
+        (cycling to next day if upper < lower)
+        """
+        lower_minutes = hhmm_to_minutes(lower)
+        upper_minutes = hhmm_to_minutes(upper)
+        value_minutes = value.hour * 60 + value.minute
+        if upper_minutes < lower_minutes:
+            return not upper_minutes <= value_minutes < lower_minutes
+        return lower_minutes <= value_minutes < upper_minutes
+    return get_interval_text(
+        start_time, placeholder, config, is_description, in_start_time_range)
+
+
+def matching_date(date: dt.date, format_string: str) -> bool:
+    """
+    Returns True if a date matches a particular format string in the
+    format YYYY-MM-DD, where asterisks indicate wildcards.
+    """
+    expected_year, expected_month, expected_day = format_string.split("-")
+    actual_year, actual_month, actual_day = date.year, date.month, date.day
+    return (
+        (expected_year == "*" or actual_year == int(expected_year))
+        and (expected_month == "*" or actual_month == int(expected_month))
+        and (expected_day == "*" or actual_day == int(expected_day)))
+
+
+def get_date_text(
+    date: dt.date, placeholder: str, config: configure.Config,
+    is_description: bool
+) -> str:
+    """
+    Handles special date field placeholder string returning text for a matching
+    date. Remember asterisks indicate wildcards e.g. *-*-01 matches all days
+    of the first days of months.
+    """
+    valid_texts_list = []
+    else_texts_list = []
+    metric, key = placeholder.split(".")
+    dates = getattr(config.markers, metric)[key]
+    for date_record in dates:
+        if len(date_record) == 2:
+            date_string, title = date_record
+            description = None
+        else:
+            date_string, title, description = date_record
+        if isinstance(title, str):
+            title = [title]
+        if isinstance(description, str):
+            description = [description]
+        if date_string is None:
+            text_list = else_texts_list
+        elif matching_date(date, date_string):
+            text_list = valid_texts_list
+        else:
+            continue
+        if is_description and description is not None:
+            text_list.append(description)
+        elif not is_description and title is not None:
+            text_list.append(title)
+    if valid_texts_list:
+        return random.choice(random.choice(valid_texts_list))
+    if else_texts_list:
+        return random.choice(random.choice(else_texts_list))
+    raise RuntimeError
+
+
+def get_heart_rate_text(
+    heart_rate_stream: list[int], time_stream: list[int],
+    heart_rate_zones: dict[int, int]
+) -> str:
+    """Returns heart rate zones text outlining time spent in HR Zones 1-5."""
+    # TODO
+
+
+def get_weather_text(weather: activity.Weather) -> str:
+    """Returns a string detailing the weather conditions of an activity."""
+    # TODO
 
 
 def get_placeholder_value(
@@ -220,15 +321,21 @@ def get_placeholder_value(
         case configure.HR_ZONES_PLACEHOLDER:
             if activity_.heart_rate_stream is None:
                 raise RuntimeError
-            return ""
+            return get_heart_rate_text(
+                activity_.heart_rate_stream, activity_.time_stream,
+                config.heart_rate_zones)
         case configure.WEATHER_PLACEHOLDER:
             if activity_.weather is None:
                 raise RuntimeError
-            return ""
+            return get_weather_text(activity_.weather)
         case "start_time":
-            return ""
+            return get_start_time_text(
+                activity_.start_date_time.time(), placeholder,
+                config, is_description)
         case "date":
-            return ""
+            return get_date_text(
+                activity_.start_date_time.date(), placeholder,
+                config, is_description)
         case _:
             value = {
                 "distance": activity_.distance,

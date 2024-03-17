@@ -22,6 +22,7 @@ def main() -> None:
         access_token = api.get_access_token(config)
         activities = activity.get_activities(access_token)
         for activity_ in activities:
+            print(activity_)
             # if not activity.can_process_activity(activity_):
             #     continue
             title, description = (
