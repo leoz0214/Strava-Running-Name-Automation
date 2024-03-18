@@ -11,7 +11,13 @@ SEEN_ACTIVITIES_FILE = DATA_FOLDER / "_seen_activities.txt"
 # BBC Weather data database. This will change depending
 # depending the location of the DB.
 # At least this is better than hard-coding the absolute path...
-WEATHER_DB_FILE = FOLDER.parent / "WeatherAutomation" / "data" / "database.db"
+# CONTEXT OF MY USAGE ONLY - NOT GENERALISED.
+import platform
+if platform.system() == "Windows":
+    WEATHER_FOLDER = FOLDER.parent / "WeatherAutomation"
+else:
+    WEATHER_FOLDER = FOLDER.parent / "weather_automate"
+WEATHER_DB_FILE = WEATHER_FOLDER / "data" / "database.db"
 
 BIN_FOLDER = FOLDER / "bin"
 GEO_DLL_FILE = BIN_FOLDER / "geo.dll"

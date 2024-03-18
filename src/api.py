@@ -75,6 +75,18 @@ def post(
         lambda: rq.post(url, data), validate_function, attempts)
 
 
+def put(
+    url: str, data: dict, validate_function: Callable = None,
+    attempts: int = DEFAULT_MAX_REQUEST_ATTEMPTS
+) -> rq.Response:
+    """
+    PUT request wrapper for retrying. Specify a validation
+    function to check status code etc. before returning response.
+    """
+    return make_request(
+        lambda: rq.put(url, data), validate_function, attempts)
+
+
 def is_status_200(response: rq.Response) -> bool:
     """Simply checks response is 200 to confirm success."""
     return response.status_code == 200

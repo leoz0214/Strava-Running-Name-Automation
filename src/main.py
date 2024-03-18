@@ -29,6 +29,8 @@ def main() -> None:
                     generate.generate_title_and_description(activity_, config))
             except RuntimeError:
                 continue
+            activity.update_activity(
+                activity_.id, title, description, access_token)
         if activities:
             logging.info("New activities processed and any renames applied.")
         else:

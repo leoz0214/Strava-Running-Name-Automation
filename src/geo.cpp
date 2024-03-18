@@ -6,10 +6,10 @@
 
 
 extern "C" {
-    __declspec(dllexport) bool any_point_touched(
+    __attribute__((visibility("default"))) bool any_point_touched(
         double* points, double* lat_long_stream,
         unsigned point_count, unsigned lat_long_count);
-    __declspec(dllexport) bool all_points_touched(
+    __attribute__((visibility("default"))) bool all_points_touched(
         double* points, double* lat_long_stream,
         unsigned point_count, unsigned lat_long_count);
 };
