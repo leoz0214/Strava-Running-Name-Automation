@@ -1,0 +1,2 @@
+flask # Used to create a local web server for OAuth authentication.
+requests # Used to easily send requests to the Strava API.

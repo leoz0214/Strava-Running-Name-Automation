@@ -188,7 +188,7 @@ def get_token_info(
 
 def save_token_info(token_info: dict) -> None:
     """
-    Saves auth info to credentials JSON file, including has
+    Saves auth info to credentials JSON file, including hashing
     to maintain integrity of data, preventing accidential
     or intentional modification.
     """

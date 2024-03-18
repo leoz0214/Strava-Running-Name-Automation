@@ -1,0 +1,96 @@
+{
+    "client_id": 999999999,
+    "client_secret": "your_client_secret",
+    "refresh_minutes": 10,
+    "hr_zones": {
+        "5": 180,
+        "4": 160,
+        "3": 140,
+        "2": 120,
+        "1": 100
+    },
+    "markers": {
+        "distance": {
+            "category": [
+                [0, 5, "Short", "Under 5k"],
+                [5, 10, "Medium", "5-10k"],
+                [10, 20, "Long", "10-20k"],
+                [20, null, ["Very Long", "Extended"], ["20k+"]]
+            ]
+        },
+        "moving_time": {
+
+        },
+        "elapsed_time": {
+
+        },
+        "pace": {
+            "example": [
+                [360, 600, "Chill", null],
+                [300, 360, null, "5-6 min/km"],
+                [null, null, "Miscellaneous Pace"]
+            ]
+        },
+        "start_time": {
+            "time_of_day": [
+                ["0500", "0800", "Early Morning", "Early Bird"],
+                ["0800", "1200", "Morning", ""],
+                ["1200", "1300", "Lunch", "Midday"],
+                ["1300", "1600", "Afternoon", ""],
+                ["1600", "1700", "Late Afternoon", ""],
+                ["1700", "2000", "Evening", ""],
+                ["2000", "2300", "Night", ""],
+                ["2300", "0500", "Late Night", "Night Owl"]
+            ]
+        },
+        "date": {
+            "dates": [
+                ["*-12-25", "Christmas", ["Merry Christmas!", "Happy Christmas!"]],
+                ["*-02-29", "Leap", ["Rarest Day", "Happy Feb 29"]],
+                ["*-*-01", "", ["Strong Start to the Month!", "First day of the month!"]],
+                [null, "", ""]
+            ]
+        },
+        "elevation": {
+
+        },
+        "elevation_per_km": {
+
+        },
+        "cadence": {
+
+        }
+    },
+    "templates": [
+        {
+            "title": "{start_time.time_of_day} {distance.category} {date.dates} Run",
+            "description": ["=== WEATHER ===\n{weather}\n\n{hr_zones}", "{date.dates}"],
+            "priority": 0,
+            "restrict": {
+                "distance": [[1, 30], [50, null]],
+                "pace": [120, 480],
+                "start_time": ["0800", "1900"]
+            }
+        }
+    ],
+    "route_templates": [
+        {
+            "title": "Forest Run - {pace.intensity}",
+            "description": "",
+            "priority": null,
+            "restrict": {
+                "distance": [6.5, 6.75],
+                "start_time": ["1000", "1030"],
+                "blacklist": [
+                    [1.23, 4.56],
+                    [-1.23, -4.56, 10]
+                ]
+            },
+            "points": [
+                [50, 70],
+                [50.0001, 70.0001, 50],
+                [50.0002, 70.0002, 30.0]
+            ]
+        }
+    ]
+}
