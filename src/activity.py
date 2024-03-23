@@ -243,7 +243,8 @@ def can_process_activity(activity: Activity) -> bool:
         logging.info(
             f"Activity {activity.id} will not be processed because "
             f"it has a non-default title: {activity.title}")
-    elif activity.description is not None:
+    elif activity.description.strip():
+        # Not empty - contains non-whitespace characters.
         logging.info(
             f"Activity {activity.id} will not be processed because "
             "it has a non-empty description.")

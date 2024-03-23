@@ -24,7 +24,7 @@ priority_key = lambda template: (
 # Load C++ functions if possible (for performance purposes).
 try:
     file = {"Windows": GEO_DLL_FILE, "Linux": GEO_SO_FILE}[platform.system()]
-    c_geo_library = ctypes.CDLL(str(file))
+    c_geo_library = ctypes.cdll.LoadLibrary(str(file))
     c_any_point_touched = c_geo_library.any_point_touched
     c_any_point_touched.restype = ctypes.c_bool
     c_all_points_touched = c_geo_library.all_points_touched
@@ -69,11 +69,9 @@ def c_points_check(
     points_array = array.array("d", points_list)
     c_points_array = (
         ctypes.c_double * len(points_array)).from_buffer(points_array)
-    points_pointer = ctypes.c_void_p(ctypes.addressof(c_points_array))
-    lat_long_pointer = ctypes.c_void_p(ctypes.addressof(c_lat_long_array))
     result = c_function(
-        points_pointer, lat_long_pointer,
-        ctypes.c_uint(len(points)), ctypes.c_uint(len(c_lat_long_array) // 3))
+        ctypes.byref(c_points_array), ctypes.byref(c_lat_long_array),
+        ctypes.c_uint(len(points)), ctypes.c_uint(len(c_lat_long_array) // 2))
     return result
 
 
@@ -231,7 +229,7 @@ def get_start_time_text(
     """Returns text for start time metric placeholder."""
     def in_start_time_range(lower: str, upper: str, value: dt.time) -> bool:
         """
-        Returns True if a 24-hour time is within range of two times 
+        Returns True if a 24-hour time is within range of two times
         (cycling to next day if upper < lower)
         """
         lower_minutes = hhmm_to_minutes(lower)
