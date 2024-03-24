@@ -160,15 +160,15 @@ def get_activity(activity_id: int, access_token: str) -> Activity:
     pace = moving_time / distance # s/km
     start_date_time = dt.datetime.fromisoformat(
         data["start_date_local"][:ISO_DATE_LENGTH]) # Ignore time zone info.
-    elevation = data["total_elevation_gain"]
+    elevation = data.get("total_elevation_gain")
     elevation_per_km = elevation / distance if elevation is not None else None
     cadence = (
-        data["average_cadence"] * 2 if data["average_cadence"] is not None
+        data["average_cadence"] * 2 if data.get("average_cadence") is not None
         else None) # One -> both feet steps.
 
     stream_url = GET_ACTIVITY_STREAMS_URL.format(id=activity_id)
     keys = []
-    has_location = bool(data["start_latlng"])
+    has_location = bool(data.get("start_latlng"))
     if has_location:
         keys.append("latlng")
     if data["has_heartrate"]:
@@ -243,7 +243,7 @@ def can_process_activity(activity: Activity) -> bool:
         logging.info(
             f"Activity {activity.id} will not be processed because "
             f"it has a non-default title: {activity.title}")
-    elif activity.description.strip():
+    elif (activity.description or "").strip():
         # Not empty - contains non-whitespace characters.
         logging.info(
             f"Activity {activity.id} will not be processed because "

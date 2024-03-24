@@ -118,7 +118,10 @@ def passes_restriction(
             intervals = restriction_category
         else:
             intervals = [restriction_category]
-        if not any(lower <= value <= upper for lower, upper in intervals):
+        if not any(
+            lower <= value <= (float("inf") if upper is None else upper)
+            for lower, upper in intervals
+        ):
             return False
     if restriction.start_time:
         if isinstance(restriction.start_time[0], list):
